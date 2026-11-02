@@ -1,6 +1,6 @@
 ﻿/*
  * Copyright 2015 Tomi Valkeinen
- * 
+ *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -16,6 +16,9 @@ namespace NetSerializer
 {
 	sealed class ObjectSerializer : IStaticTypeSerializer
 	{
+		[ThreadStatic]
+		static int s_depth;
+
 		public bool Handles(Type type)
 		{
 			return type == typeof(object);
@@ -77,7 +80,20 @@ namespace NetSerializer
 			}
 
 			var del = serializer.GetDeserializeTrampolineFromId(id);
-			del(serializer, stream, out ob);
+
+			s_depth++;
+
+			try
+			{
+				if (s_depth > serializer.Settings.MaxDeserializationDepth)
+					throw new InvalidDataException("Maximum deserialization depth exceeded");
+
+				del(serializer, stream, out ob);
+			}
+			finally
+			{
+				s_depth--;
+			}
 		}
 
 		public static void DeserializeTyped<T>(Serializer serializer, Stream stream, out T value)
