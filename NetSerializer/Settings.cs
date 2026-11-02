@@ -1,6 +1,6 @@
 ﻿/*
  * Copyright 2016 Tomi Valkeinen
- * 
+ *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -27,5 +27,10 @@ namespace NetSerializer
 		/// Support OnSerializing, OnSerialized, OnDeserializing, OnDeserialized attributes
 		/// </summary>
 		public bool SupportSerializationCallbacks = false;
+
+		/// <summary>
+		/// Maximum nesting depth of dynamically typed values while deserializing. Exceeding it throws InvalidDataException.
+		/// </summary>
+		public int MaxDeserializationDepth = 256;
 	}
 }
