@@ -48,7 +48,7 @@ internal sealed class ImmutableArraySerializer : IStaticTypeSerializer
 	// ReSharper disable once UnusedMember.Local
 	private static void Deserialize<T>(Serializer serializer, Stream stream, out ImmutableArray<T> ob)
 	{
-		var array = (T[]) serializer.Deserialize(stream);
+		var array = Helpers.CastDeserialized<T[]>(serializer.Deserialize(stream));
 
 		ob = ImmutableCollectionsMarshal.AsImmutableArray(array);
 	}

@@ -1,4 +1,3 @@
-#if NET5_0_OR_GREATER
 using System;
 using System.IO;
 using NUnit.Framework;
@@ -46,4 +45,3 @@ namespace NetSerializer.UnitTests
 		}
 	}
 }
-#endif

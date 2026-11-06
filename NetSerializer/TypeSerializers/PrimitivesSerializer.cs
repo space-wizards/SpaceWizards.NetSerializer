@@ -29,9 +29,7 @@ namespace NetSerializer
 				typeof(DateTime),
 				typeof(byte[]),
 				typeof(Decimal),
-#if NET5_0_OR_GREATER
 				typeof(Half),
-#endif
 			};
 
 		public bool Handles(Type type)
@@ -51,6 +49,11 @@ namespace NetSerializer
 
 		public MethodInfo GetStaticReader(Type type)
 		{
+			// Strings are read through a variant that takes the Serializer, so their memory counts toward
+			// Settings.MaxCollectionBytes.
+			if (type == typeof(string))
+				return typeof(Primitives).GetMethod(nameof(Primitives.ReadString), BindingFlags.Static | BindingFlags.NonPublic)!;
+
 			return Primitives.GetReaderPrimitive(type);
 		}
 

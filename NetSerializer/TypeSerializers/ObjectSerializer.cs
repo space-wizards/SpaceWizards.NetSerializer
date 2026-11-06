@@ -100,7 +100,20 @@ namespace NetSerializer
 		{
 			// Check before assigning it. This just ensures we get an InvalidCastException out instead of sending bad data.
 			Deserialize(serializer, stream, out var ob);
-			value = (T)ob;
+
+			if (ob is T typed)
+			{
+				value = typed;
+			}
+			else if (ob == null && default(T) == null)
+			{
+				value = default;
+			}
+			else
+			{
+				throw new InvalidDataException(
+					$"Expected {typeof(T)} but the data contained {(ob == null ? "null" : ob.GetType().ToString())}");
+			}
 		}
 	}
 }

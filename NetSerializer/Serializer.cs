@@ -328,13 +328,21 @@ namespace NetSerializer
 		public object Deserialize(Stream stream)
 		{
 			object ob;
-			ObjectSerializer.Deserialize(this, stream, out ob);
+			Deserialize(stream, out ob);
 			return ob;
 		}
 
 		public void Deserialize(Stream stream, out object ob)
 		{
-			ObjectSerializer.Deserialize(this, stream, out ob);
+			Helpers.EnterDeserialize();
+			try
+			{
+				ObjectSerializer.Deserialize(this, stream, out ob);
+			}
+			finally
+			{
+				Helpers.ExitDeserialize();
+			}
 		}
 
 		/// <summary>
@@ -368,7 +376,15 @@ namespace NetSerializer
 					del = (DeserializeDelegate<T>)GenerateDirectReaderDelegate(typeof(T));
 			}
 
-			del(this, stream, out value);
+			Helpers.EnterDeserialize();
+			try
+			{
+				del(this, stream, out value);
+			}
+			finally
+			{
+				Helpers.ExitDeserialize();
+			}
 		}
 
 		public int RegisterContext(object context)
@@ -412,6 +428,9 @@ namespace NetSerializer
 
 		internal DeserializeDelegate<object> GetDeserializeTrampolineFromId(uint id)
 		{
+			if (!m_runtimeTypeIDList.ContainsTypeID(id))
+				throw new InvalidDataException($"Unknown type id {id}");
+
 			var data = m_runtimeTypeIDList[id];
 
 			if (data.ReaderTrampolineDelegate != null)

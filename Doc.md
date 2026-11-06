@@ -135,10 +135,41 @@ the added types, which must then be delivered to other instances.
 
 ## Settings
 
-You can provide `NetSerializer.Settings` instance when initializing
-netserializer to enable support for `IDeserializationCallback` or
-`OnSerializing`, `OnSerialized`, `OnDeserializing`, `OnDeserialized`
-attributes.
+You can pass a `NetSerializer.Settings` instance when creating a `Serializer`.
+
+- `SupportIDeserializationCallback`: call `IDeserializationCallback` after
+  reading an object. Off by default.
+- `SupportSerializationCallbacks`: run methods marked `OnSerializing`,
+  `OnSerialized`, `OnDeserializing` and `OnDeserialized`. Off by default.
+- `CustomTypeSerializers`: see Custom Serializers below.
+
+### Reading untrusted data
+
+The settings below stop a small message from making the reader allocate a lot
+of memory or recurse too deep. Going over any of them throws
+`InvalidDataException`.
+
+- `MaxDeserializationDepth` (default 256): how deeply values read through
+  `object` can nest.
+- `MaxCollectionLength` (default 16,777,216): the most elements an array or
+  collection may declare. This is only used when the length cannot be checked
+  against the stream, see below.
+- `MaxCollectionBytes` (default 64 MiB): the most memory the arrays, lists and
+  strings read by one `Deserialize` or `DeserializeDirect` call may use in
+  total, nested ones included. `byte[]` does not count, because it is limited by
+  the data in the stream. This counts the slots of arrays and lists, not the
+  objects stored in them, so it is not a hard limit on memory. Limit the size of
+  the messages you accept as well. Strings only count when they are read by
+  NetSerializer itself. A custom serializer for `string` that calls
+  `Primitives.ReadPrimitive` is not counted.
+
+If the stream can seek (a `MemoryStream`, for example), a declared length is also
+checked against the bytes left in the stream, and a length that can't fit throws
+`EndOfStreamException`. On a stream that can't seek, only the limits above
+apply, so read untrusted data from a `MemoryStream` where you can.
+
+Bad data throws `InvalidDataException` or `EndOfStreamException`. If you read
+data you don't trust, treat any exception from `Deserialize` as bad input.
 
 ## Custom Serializers
 
@@ -148,6 +179,29 @@ be used to serialize types not directly supported by NetSerializer.
 However, at the moment custom serializers are somewhat limited in
 functionality, and you may not be able to create efficient custom serializers.
 Issue #39 tracks this.
+
+### Telling NetSerializer how small a value can be
+
+When it reads an array or list, NetSerializer rejects a declared length that is
+longer than the bytes left in the stream. This only works when every element
+takes at least one byte. NetSerializer knows that for its own types but not for
+types handled by a custom serializer, so arrays of those types are only limited
+by `MaxCollectionLength` and `MaxCollectionBytes`.
+
+To get the stream check for your type, implement `IMinimumSerializedSize` on
+your serializer and return the smallest number of bytes a value can take:
+
+```csharp
+class FloatSerializer : IStaticTypeSerializer, IMinimumSerializedSize
+{
+    // Handles, GetSubtypes, GetStaticWriter and GetStaticReader as usual.
+
+    public int GetMinimumSerializedSize(Type type) => 4; // always writes 4 bytes
+}
+```
+
+Return 0 if a value can be empty or you aren't sure. Never return more than the
+real minimum, or valid data will be rejected.
 
 ## Known Issues
 

@@ -28,6 +28,148 @@ namespace NetSerializer
 				.MakeGenericMethod(type);
 		}
 
+		/// <summary>
+		/// Validate a declared array/collection length before allocating storage for it.
+		/// Called from generated reader code.
+		/// </summary>
+		/// <param name="elementsNeverEmpty">True if every element is guaranteed to serialize to at least one byte.</param>
+		/// <param name="elementSize">In-memory size of one element, in bytes.</param>
+		public static void ValidateCollectionLength(Serializer serializer, Stream stream, uint count, bool elementsNeverEmpty, int elementSize)
+		{
+			if (elementsNeverEmpty && stream.CanSeek)
+			{
+				var remaining = stream.Length - stream.Position;
+				if (count > remaining)
+					throw new EndOfStreamException("Declared length exceeds the remaining stream length");
+			}
+			else if (count > (uint)Math.Max(serializer.Settings.MaxCollectionLength, 0))
+			{
+				throw new InvalidDataException("Maximum collection length exceeded");
+			}
+
+			// The length is plausible for the stream, but elements can be much larger in memory than on the wire.
+			// Nested collections each fit the remaining stream (their parents have not consumed their elements yet).
+			// So without a running total a small payload could allocate the budget once per nesting level
+			ChargeAllocation(serializer, (ulong)count * (uint)Math.Max(elementSize, 1));
+		}
+
+		/// <summary>
+		/// Add an allocation to the running total of the current top-level deserialize call and throw if the total
+		/// exceeds <see cref="Settings.MaxCollectionBytes"/>.
+		/// </summary>
+		public static void ChargeAllocation(Serializer serializer, ulong bytes)
+		{
+			var total = bytes;
+			if (s_deserializeDepth > 0)
+				total += (ulong)s_collectionBytes;
+
+			if (total > (ulong)Math.Max(serializer.Settings.MaxCollectionBytes, 0))
+				throw new InvalidDataException("Maximum collection size exceeded");
+
+			if (s_deserializeDepth > 0)
+				s_collectionBytes = (long)total;
+		}
+
+		// Allocation accounting for the current top-level Deserialize/DeserializeDirect call on this thread.
+		[ThreadStatic] static int s_deserializeDepth;
+		[ThreadStatic] static long s_collectionBytes;
+
+		/// <summary>
+		/// Mark the start of a public deserialize call. Only the outermost call resets the allocation total, so
+		/// nested calls made by readers (HashSet, Dictionary, ...) share the budget of the call that started them.
+		/// </summary>
+		public static void EnterDeserialize()
+		{
+			if (s_deserializeDepth++ == 0)
+				s_collectionBytes = 0;
+		}
+
+		public static void ExitDeserialize()
+		{
+			s_deserializeDepth--;
+		}
+
+		/// <summary>
+		/// Validate the character/byte counts declared by a string before allocating the string.
+		/// </summary>
+		public static void ValidateStringLength(Stream stream, uint totalBytes, uint totalChars)
+		{
+			// Strings and their byte counts are handled as int downstream.
+			if (totalBytes > int.MaxValue)
+				throw new InvalidDataException("String is too long");
+
+			// Callers handle null and empty strings before this point, so there is at least one byte and one char.
+			// (A zero char count would also make string.Create skip the read, leaving the bytes unconsumed.)
+			if (totalChars == 0)
+				throw new InvalidDataException("String declares no characters");
+
+			// UTF-8 never encodes a UTF-16 code unit in less than one byte.
+			if (totalChars > totalBytes)
+				throw new InvalidDataException("String declares more characters than bytes");
+
+			if (stream.CanSeek && totalBytes > stream.Length - stream.Position)
+				throw new EndOfStreamException("Declared string length exceeds the remaining stream length");
+		}
+
+		/// <summary>
+		/// Returns true if values of the type, as an array/collection element, always serialize to at least one byte.
+		/// Conservative: returns false when unsure.
+		/// </summary>
+		public static bool ElementsNeverEmpty(Serializer serializer, Type type)
+		{
+			return NeverEmpty(serializer, type, new HashSet<Type>());
+		}
+
+		static bool NeverEmpty(Serializer serializer, Type type, HashSet<Type> visiting)
+		{
+			// Same lookup as Serializer.GetTypeSerializer: the first custom serializer that handles the type wins.
+			// NetSerializer can't know what a custom serializer writes, unless it says so.
+			var custom = serializer.Settings.CustomTypeSerializers.FirstOrDefault(s => s.Handles(type));
+			if (custom != null)
+				return custom is IMinimumSerializedSize size && size.GetMinimumSerializedSize(type) >= 1;
+
+			// Arrays, strings and reference types (which go through ObjectSerializer and write a type id).
+			if (!type.IsValueType)
+				return true;
+
+			if (type.IsPrimitive || type.IsEnum)
+				return true;
+
+			if (type.IsGenericType)
+			{
+				var def = type.GetGenericTypeDefinition();
+				if (def == typeof(System.Collections.Immutable.ImmutableArray<>) || def == typeof(NetListAsArray<>))
+					return true;
+			}
+
+			if (!type.IsSerializable || !visiting.Add(type))
+				return false;
+
+			try
+			{
+				return GetFieldInfos(type).Any(f => NeverEmpty(serializer, f.FieldType, visiting));
+			}
+			finally
+			{
+				visiting.Remove(type);
+			}
+		}
+
+		/// <summary>
+		/// Cast a freshly deserialized object to the type a reader expects.
+		/// A mismatch means malformed data.
+		/// </summary>
+		public static T CastDeserialized<T>(object ob) where T : class
+		{
+			if (ob == null)
+				return null;
+
+			if (ob is T typed)
+				return typed;
+
+			throw new InvalidDataException($"Expected {typeof(T)} but the data contained {ob.GetType()}");
+		}
+
 		public static IEnumerable<FieldInfo> GetFieldInfos(Type type)
 		{
 			Debug.Assert(type.IsSerializable, $"Type {type} is not marked as serializable");
