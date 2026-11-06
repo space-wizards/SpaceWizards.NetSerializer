@@ -43,10 +43,14 @@ namespace NetSerializer.TypeSerializers
 
 			il.MarkLabel(notNullLabel);
 
-			// write array len + 1
-			il.Emit(OpCodes.Ldarg_1);
+			var countLocal = il.DeclareLocal(typeof(int));
 			il.Emit(OpCodes.Ldarg_2);
 			il.Emit(OpCodes.Callvirt, ListCountGetter(type));
+			il.Emit(OpCodes.Stloc_S, countLocal);
+
+			// write array len + 1
+			il.Emit(OpCodes.Ldarg_1);
+			il.Emit(OpCodes.Ldloc_S, countLocal);
 			il.Emit(OpCodes.Ldc_I4_1);
 			il.Emit(OpCodes.Add);
 			il.Emit(OpCodes.Call, serializer.GetDirectWriter(typeof(uint)));
@@ -89,9 +93,7 @@ namespace NetSerializer.TypeSerializers
 
 			// loop condition
 			il.Emit(OpCodes.Ldloc_S, idxLocal);
-			il.Emit(OpCodes.Ldarg_2);
-			il.Emit(OpCodes.Callvirt, ListCountGetter(type));
-			il.Emit(OpCodes.Conv_I4);
+			il.Emit(OpCodes.Ldloc_S, countLocal);
 			il.Emit(OpCodes.Blt_S, loopBodyLabel);
 
 			il.Emit(OpCodes.Ret);
@@ -130,6 +132,14 @@ namespace NetSerializer.TypeSerializers
 			il.Emit(OpCodes.Ldc_I4_1);
 			il.Emit(OpCodes.Sub);
 			il.Emit(OpCodes.Stloc, lenLocal);
+
+			// validate the declared length before allocating
+			il.Emit(OpCodes.Ldarg_0);
+			il.Emit(OpCodes.Ldarg_1);
+			il.Emit(OpCodes.Ldloc_S, lenLocal);
+			il.Emit(Helpers.ElementsNeverEmpty(serializer, elemType) ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+			il.Emit(OpCodes.Sizeof, elemType);
+			il.Emit(OpCodes.Call, typeof(Helpers).GetMethod(nameof(Helpers.ValidateCollectionLength))!);
 
 			// create new list with len capacity.
 			il.Emit(OpCodes.Ldloc_S, lenLocal);

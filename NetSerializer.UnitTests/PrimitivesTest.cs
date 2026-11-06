@@ -9,10 +9,6 @@ namespace NetSerializer.UnitTests
 	[Parallelizable(ParallelScope.All)]
 	public class PrimitivesTest
 	{
-#if NET5_0_OR_GREATER
-#if NO_UNSAFE
-        [Ignore("Float and half tests are inacurrate due to rounding when NO_UNSAFE is enabled.")]
-#endif
         [Test]
         [TestCase(0)]
         [TestCase(1)]
@@ -34,11 +30,7 @@ namespace NetSerializer.UnitTests
         	Primitives.ReadPrimitive(new ByteStream(stream), out Half read);
         	Assert.That(read, Is.EqualTo(half));
         }
-#endif
 
-#if NO_UNSAFE
-		[Ignore("Float tests are inacurrate due to rounding when NO_UNSAFE is enabled.")]
-#endif
 		[Test]
 		[TestCase(0)]
 		[TestCase(1)]

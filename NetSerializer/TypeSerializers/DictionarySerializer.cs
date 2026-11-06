@@ -112,7 +112,7 @@ namespace NetSerializer
 
 		public static void ReadPrimitive<TKey, TValue>(Serializer serializer, Stream stream, out Dictionary<TKey, TValue> value)
 		{
-			var kvpArray = (KeyValuePair<TKey, TValue>[])serializer.Deserialize(stream);
+			var kvpArray = Helpers.CastDeserialized<KeyValuePair<TKey, TValue>[]>(serializer.Deserialize(stream));
 
 			if (kvpArray == null)
 			{
@@ -122,8 +122,16 @@ namespace NetSerializer
 
 			value = new Dictionary<TKey, TValue>(kvpArray.Length);
 
-			foreach (var kvp in kvpArray)
-				value.Add(kvp.Key, kvp.Value);
+			try
+			{
+				foreach (var kvp in kvpArray)
+					value.Add(kvp.Key, kvp.Value);
+			}
+			catch (ArgumentException e)
+			{
+				// Duplicate key, or a null key (ArgumentNullException is an ArgumentException).
+				throw new InvalidDataException("Invalid dictionary contents", e);
+			}
 		}
 
 		public static void ReadPrimitive<TKey, TValue>(Serializer serializer, Stream stream, out ImmutableDictionary<TKey, TValue> value)

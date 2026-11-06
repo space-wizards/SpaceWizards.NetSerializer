@@ -131,6 +131,16 @@ namespace NetSerializer
 
 			var arrLocal = il.DeclareLocal(type);
 
+			// validate the declared length (len - 1) before allocating
+			il.Emit(OpCodes.Ldarg_0);
+			il.Emit(OpCodes.Ldarg_1);
+			il.Emit(OpCodes.Ldloc_S, lenLocal);
+			il.Emit(OpCodes.Ldc_I4_1);
+			il.Emit(OpCodes.Sub);
+			il.Emit(Helpers.ElementsNeverEmpty(serializer, elemType) ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+			il.Emit(OpCodes.Sizeof, elemType);
+			il.Emit(OpCodes.Call, typeof(Helpers).GetMethod(nameof(Helpers.ValidateCollectionLength))!);
+
 			// create new array with len - 1
 			il.Emit(OpCodes.Ldloc_S, lenLocal);
 			il.Emit(OpCodes.Ldc_I4_1);
